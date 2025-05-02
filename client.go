@@ -2,38 +2,44 @@
 package main
 
 import (
-	"fmt" // For printing output
-	"log" // For error handling
-	"net" // For networking
-	// For command-line args (not used yet)
+	"bufio" // NEW: For reading user input
+	"fmt"
+	"log"
+	"net"
+	"os"
 )
 
-func startClient() {
-	// Connect to localhost on port 8080
-	addr, err := net.ResolveUDPAddr("udp", "localhost:8080")
+// NEW: Now takes server address as parameter
+func startClient(serverAddr string) {
+	addr, err := net.ResolveUDPAddr("udp", serverAddr)
 	if err != nil {
-		log.Fatal(err) // Crash if address is invalid
+		log.Fatal(err)
 	}
 
-	// Establish UDP connection
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		log.Fatal(err) // Crash if connection fails
+		log.Fatal(err)
 	}
-	defer conn.Close() // Ensure connection closes when done
+	defer conn.Close()
 
-	// Send a single test message
-	conn.Write([]byte("Hello, server!"))
+	// NEW: Goroutine to handle incoming messages concurrently
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			n, _, err := conn.ReadFromUDP(buf)
+			if err != nil {
+				log.Println("Receive error:", err)
+				return
+			}
+			// NEW: Print incoming messages with prefix
+			fmt.Println(">", string(buf[:n]))
+		}
+	}()
 
-	// Prepare to receive response
-	buf := make([]byte, 1024) // Buffer for server response
-
-	// Wait for and read server's echo response
-	n, _, err := conn.ReadFromUDP(buf)
-	if err != nil {
-		log.Fatal(err) // Crash if read fails
+	// NEW: Continuously read user input
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		// NEW: Send each line of input to server
+		conn.Write([]byte(scanner.Text()))
 	}
-
-	// Print the echoed message
-	fmt.Println("Server reply:", string(buf[:n]))
 }
