@@ -4,25 +4,27 @@ package main
 import (
 	"fmt"
 	"os"
-) // NEW: Now handles command-line arguments
+)
 
 func main() {
-	// Check for required arguments
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run . server|client <address>")
+		// NEW: Better usage instructions with username requirement
+		fmt.Println("Usage:")
+		fmt.Println("  Server: go run . server")
+		fmt.Println("  Client: go run . client <address> <username>")
 		return
 	}
 
-	// NEW: Supports both server and client modes
 	switch os.Args[1] {
 	case "server":
 		startServer()
 	case "client":
-		// NEW: Client requires server address
-		if len(os.Args) < 3 {
-			fmt.Println("Client needs server address")
+		// NEW: Client now requires username
+		if len(os.Args) < 4 {
+			fmt.Println("Client needs server address and username")
 			return
 		}
-		startClient(os.Args[2]) // Pass server address
+		// NEW: Pass username to client
+		startClient(os.Args[2], os.Args[3])
 	}
 }

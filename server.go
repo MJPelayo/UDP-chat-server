@@ -1,50 +1,68 @@
-p// server.go
+// server.go
 package main
 
 import (
-    "log"
-    "net"
-    "sync" // NEW: For thread-safe client management
+	"fmt"
+	"log"
+	"net"
+	"strings" // NEW: For parsing registration messages
+	"sync"
+	"time" // NEW: For tracking last activity
 )
 
-// NEW: Track all connected clients by their address string
-var clients = make(map[string]*net.UDPAddr)
+// NEW: Client struct to store more user information
+type Client struct {
+	addr     *net.UDPAddr // Network address
+	name     string       // Username
+	lastSeen time.Time    // Last activity timestamp
+}
 
-// NEW: Mutex to protect clients map from concurrent access
+var clients = make(map[string]*Client) // Now stores Client structs
 var mu sync.Mutex
 
 func startServer() {
-    conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 8080})
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer conn.Close()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 8080})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
 
-    buf := make([]byte, 1024)
-    for {
-        n, addr, err := conn.ReadFromUDP(buf)
-        if err != nil {
-            log.Println(err)
-            continue
-        }
-        
-        // NEW: Lock clients map for thread safety
-        mu.Lock()
-        
-        // NEW: Remember new clients
-        if _, exists := clients[addr.String()]; !exists {
-            clients[addr.String()] = addr
-        }
-        
-        // NEW: Broadcast message to all clients except sender
-        msg := string(buf[:n])
-        for _, clientAddr := range clients {
-            if clientAddr.String() != addr.String() {
-                conn.WriteToUDP([]byte(msg), clientAddr)
-            }
-        }
-        
-        // NEW: Unlock when done
-        mu.Unlock()
-    }
+	buf := make([]byte, 1024)
+	for {
+		n, addr, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		msg := string(buf[:n])
+		mu.Lock()
+
+		// NEW: Registration system
+		if strings.HasPrefix(msg, "REGISTER:") {
+			name := strings.TrimPrefix(msg, "REGISTER:")
+			// NEW: Create client with username and timestamp
+			clients[addr.String()] = &Client{
+				addr:     addr,
+				name:     name,
+				lastSeen: time.Now(),
+			}
+			// NEW: Notify all users about new join
+			broadcast(conn, fmt.Sprintf("User %s joined", name))
+		} else if client, exists := clients[addr.String()]; exists {
+			// Existing user - update last seen and handle message
+			client.lastSeen = time.Now()
+			// NEW: Messages now show username instead of address
+			broadcast(conn, fmt.Sprintf("%s: %s", client.name, msg))
+		}
+
+		mu.Unlock()
+	}
+}
+
+// NEW: Helper function for broadcasting to all clients
+func broadcast(conn *net.UDPConn, msg string) {
+	for _, client := range clients {
+		conn.WriteToUDP([]byte(msg), client.addr)
+	}
 }

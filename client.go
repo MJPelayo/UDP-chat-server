@@ -2,15 +2,15 @@
 package main
 
 import (
-	"bufio" // NEW: For reading user input
+	"bufio"
 	"fmt"
 	"log"
 	"net"
 	"os"
 )
 
-// NEW: Now takes server address as parameter
-func startClient(serverAddr string) {
+// NEW: Now takes username as second parameter
+func startClient(serverAddr, username string) {
 	addr, err := net.ResolveUDPAddr("udp", serverAddr)
 	if err != nil {
 		log.Fatal(err)
@@ -22,7 +22,11 @@ func startClient(serverAddr string) {
 	}
 	defer conn.Close()
 
-	// NEW: Goroutine to handle incoming messages concurrently
+	// NEW: Register username with server
+	conn.Write([]byte("REGISTER:" + username))
+	fmt.Printf("Connected as %s\n", username)
+
+	// Goroutine to handle incoming messages
 	go func() {
 		buf := make([]byte, 1024)
 		for {
@@ -31,15 +35,14 @@ func startClient(serverAddr string) {
 				log.Println("Receive error:", err)
 				return
 			}
-			// NEW: Print incoming messages with prefix
-			fmt.Println(">", string(buf[:n]))
+			// Messages now include usernames
+			fmt.Println(string(buf[:n]))
 		}
 	}()
 
-	// NEW: Continuously read user input
+	// Read user input continuously
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		// NEW: Send each line of input to server
 		conn.Write([]byte(scanner.Text()))
 	}
 }
