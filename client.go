@@ -7,9 +7,9 @@ import (
 	"log"
 	"net"
 	"os"
+	// NEW: For parsing commands
 )
 
-// NEW: Now takes username as second parameter
 func startClient(serverAddr, username string) {
 	addr, err := net.ResolveUDPAddr("udp", serverAddr)
 	if err != nil {
@@ -22,11 +22,16 @@ func startClient(serverAddr, username string) {
 	}
 	defer conn.Close()
 
-	// NEW: Register username with server
 	conn.Write([]byte("REGISTER:" + username))
 	fmt.Printf("Connected as %s\n", username)
 
-	// Goroutine to handle incoming messages
+	// NEW: Show available commands on startup
+	fmt.Println("Commands:")
+	fmt.Println("/users - List online users")
+	fmt.Println("/quit - Exit the chat")
+	fmt.Println("/rename <name> - Change your username")
+	fmt.Println("/help - Show this help")
+
 	go func() {
 		buf := make([]byte, 1024)
 		for {
@@ -35,14 +40,33 @@ func startClient(serverAddr, username string) {
 				log.Println("Receive error:", err)
 				return
 			}
-			// Messages now include usernames
 			fmt.Println(string(buf[:n]))
 		}
 	}()
 
-	// Read user input continuously
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		conn.Write([]byte(scanner.Text()))
+		text := scanner.Text()
+
+		// NEW: Client-side command handling
+		switch {
+		case text == "/help":
+			printHelp() // Show help menu
+		case text == "/quit":
+			conn.Write([]byte("/quit")) // Send quit command
+			return                      // Exit client
+		default:
+			conn.Write([]byte(text)) // Send normal message
+		}
 	}
+}
+
+// NEW: Help function to explain commands
+func printHelp() {
+	help := `Available commands:
+/users    - List online users
+/quit     - Exit the chat
+/rename   - Change your username
+/help     - Show this help`
+	fmt.Println(help)
 }
