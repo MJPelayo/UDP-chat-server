@@ -10,10 +10,12 @@ import (
 	"time"
 )
 
+// NEW: Added isAdmin flag to Client struct
 type Client struct {
 	addr     *net.UDPAddr
 	name     string
 	lastSeen time.Time
+	isAdmin  bool // Flag for admin privileges
 }
 
 var clients = make(map[string]*Client)
@@ -40,38 +42,70 @@ func startServer() {
 		if client, exists := clients[addr.String()]; exists {
 			client.lastSeen = time.Now()
 
-			// NEW: Command handling system
 			switch {
 			case msg == "/users":
-				// Handle /users command - list all connected users
 				list := "Connected users:\n"
 				for _, c := range clients {
-					list += fmt.Sprintf("- %s\n", c.name)
+					// NEW: Show admin status in user list
+					adminTag := ""
+					if c.isAdmin {
+						adminTag = " (admin)"
+					}
+					list += fmt.Sprintf("- %s%s\n", c.name, adminTag)
 				}
 				conn.WriteToUDP([]byte(list), addr)
 
 			case msg == "/quit":
-				// Handle /quit command - remove user gracefully
 				delete(clients, addr.String())
 				broadcast(conn, fmt.Sprintf("%s left", client.name))
 
 			case strings.HasPrefix(msg, "/rename "):
-				// Handle /rename command - change username
 				newName := strings.TrimPrefix(msg, "/rename ")
+				// NEW: Update admin status when renaming
 				client.name = newName
+				client.isAdmin = (newName == "admin") // "admin" username gets privileges
 				broadcast(conn, fmt.Sprintf("%s changed name to %s", client.name, newName))
 
+			// NEW: Private message handling
+			case strings.HasPrefix(msg, "WHISPER:"):
+				parts := strings.SplitN(strings.TrimPrefix(msg, "WHISPER:"), ":", 2)
+				if len(parts) == 2 {
+					target, message := parts[0], parts[1]
+					for _, c := range clients {
+						if c.name == target {
+							// Send private message only to target user
+							conn.WriteToUDP([]byte(fmt.Sprintf("[PM from %s] %s", client.name, message)), c.addr)
+						}
+					}
+				}
+
+			// NEW: Admin commands
+			case msg == "/menu" && client.isAdmin:
+				adminMenu := "ADMIN MENU:\n/kick <user>\n/shutdown"
+				conn.WriteToUDP([]byte(adminMenu), addr)
+
+			case strings.HasPrefix(msg, "/kick ") && client.isAdmin:
+				target := strings.TrimPrefix(msg, "/kick ")
+				for addrStr, c := range clients {
+					if c.name == target {
+						delete(clients, addrStr)
+						// Notify kicked user
+						conn.WriteToUDP([]byte("You were kicked by admin"), c.addr)
+					}
+				}
+
 			default:
-				// Regular message - broadcast normally
 				broadcast(conn, fmt.Sprintf("%s: %s", client.name, msg))
 			}
 		} else if strings.HasPrefix(msg, "REGISTER:") {
-			// Existing registration logic
 			name := strings.TrimPrefix(msg, "REGISTER:")
+			// NEW: Set admin status during registration
+			isAdmin := (name == "admin")
 			clients[addr.String()] = &Client{
 				addr:     addr,
 				name:     name,
 				lastSeen: time.Now(),
+				isAdmin:  isAdmin,
 			}
 			broadcast(conn, fmt.Sprintf("User %s joined", name))
 		}

@@ -7,7 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
-	// NEW: For parsing commands
+	"strings" // For parsing whisper command
 )
 
 func startClient(serverAddr, username string) {
@@ -25,11 +25,16 @@ func startClient(serverAddr, username string) {
 	conn.Write([]byte("REGISTER:" + username))
 	fmt.Printf("Connected as %s\n", username)
 
-	// NEW: Show available commands on startup
+	// NEW: Show admin commands if username is "admin"
+	if username == "admin" {
+		fmt.Println("Admin commands: /menu, /kick")
+	}
+
 	fmt.Println("Commands:")
 	fmt.Println("/users - List online users")
 	fmt.Println("/quit - Exit the chat")
 	fmt.Println("/rename <name> - Change your username")
+	fmt.Println("/whisper <user> <msg> - Private message") // NEW: Whisper command
 	fmt.Println("/help - Show this help")
 
 	go func() {
@@ -47,26 +52,41 @@ func startClient(serverAddr, username string) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		text := scanner.Text()
-
-		// NEW: Client-side command handling
 		switch {
 		case text == "/help":
-			printHelp() // Show help menu
+			// NEW: Pass admin status to help function
+			printHelp(username == "admin")
 		case text == "/quit":
-			conn.Write([]byte("/quit")) // Send quit command
-			return                      // Exit client
+			conn.Write([]byte("/quit"))
+			return
+		// NEW: Handle whisper command
+		case strings.HasPrefix(text, "/whisper "):
+			parts := strings.SplitN(strings.TrimPrefix(text, "/whisper "), " ", 2)
+			if len(parts) == 2 {
+				// Format: WHISPER:target:message
+				conn.Write([]byte(fmt.Sprintf("WHISPER:%s:%s", parts[0], parts[1])))
+			}
 		default:
-			conn.Write([]byte(text)) // Send normal message
+			conn.Write([]byte(text))
 		}
 	}
 }
 
-// NEW: Help function to explain commands
-func printHelp() {
+// NEW: Updated help to show admin commands conditionally
+func printHelp(isAdmin bool) {
 	help := `Available commands:
 /users    - List online users
 /quit     - Exit the chat
 /rename   - Change your username
+/whisper  - Send private message
 /help     - Show this help`
+
+	if isAdmin {
+		help += `
+Admin commands:
+/kick <user> - Kick a user
+/menu - Admin menu`
+	}
+
 	fmt.Println(help)
 }
