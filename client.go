@@ -1,4 +1,3 @@
-// client.go
 package main
 
 import (
@@ -12,6 +11,10 @@ import (
 	"time"
 )
 
+func showPrompt(username string) {
+	fmt.Printf("\033[36m[%s]\033[0m » ", username)
+}
+
 func startClient(serverAddr, username string) {
 	addr, err := net.ResolveUDPAddr("udp", serverAddr)
 	if err != nil {
@@ -24,16 +27,13 @@ func startClient(serverAddr, username string) {
 	}
 	defer conn.Close()
 
-	// Set initial read timeout
 	conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 
-	// Register with server
 	_, err = conn.Write([]byte("REGISTER:" + username))
 	if err != nil {
 		log.Fatal("Registration failed:", err)
 	}
 
-	// Color-coded connection message
 	fmt.Printf("\033[32mConnected to %s as %s\033[0m\n", serverAddr, username)
 	if username == "admin" {
 		fmt.Println("Type /menu for admin commands")
@@ -42,25 +42,21 @@ func startClient(serverAddr, username string) {
 		fmt.Println("You will be automatically disconnected after 10 minutes of inactivity")
 	}
 
-	// Use WaitGroup to manage goroutines
 	var wg sync.WaitGroup
-	wg.Add(2)                       // We'll launch 2 goroutines
-	shutdown := make(chan struct{}) // Channel for graceful shutdown
+	wg.Add(2)
+	shutdown := make(chan struct{})
 
-	// Goroutine 1: Handle incoming messages
 	go func() {
-		defer wg.Done() // Notify WaitGroup when done
+		defer wg.Done()
 		buf := make([]byte, 1024)
 		for {
 			select {
 			case <-shutdown:
 				return
 			default:
-				// Refresh read timeout periodically
 				conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 				n, err := conn.Read(buf)
 				if err != nil {
-					// Handle timeout errors differently
 					if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 						continue
 					}
@@ -68,7 +64,6 @@ func startClient(serverAddr, username string) {
 					close(shutdown)
 					return
 				}
-				// Clear line and print message
 				fmt.Print("\r\033[K")
 				fmt.Printf("%s\n", string(buf[:n]))
 				showPrompt(username)
@@ -76,7 +71,6 @@ func startClient(serverAddr, username string) {
 		}
 	}()
 
-	// Goroutine 2: Handle user input
 	go func() {
 		defer wg.Done()
 		scanner := bufio.NewScanner(os.Stdin)
@@ -92,7 +86,6 @@ func startClient(serverAddr, username string) {
 				}
 
 				text := scanner.Text()
-				// Enhanced command handling
 				switch {
 				case text == "/quit":
 					conn.Write([]byte("QUIT:" + username))
@@ -137,17 +130,10 @@ func startClient(serverAddr, username string) {
 		}
 	}()
 
-	// Wait for both goroutines to finish
 	wg.Wait()
 	fmt.Println("\033[33mDisconnected from server\033[0m")
 }
 
-// Helper function to show username prompt
-func showPrompt(username string) {
-	fmt.Printf("\033[35m[%s]\033[0m > ", username)
-}
-
-// Enhanced help with color and admin commands
 func printHelp(isAdmin bool) {
 	help := `
 \033[1mAvailable Commands:\033[0m

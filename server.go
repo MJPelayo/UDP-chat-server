@@ -1,4 +1,3 @@
-// server.go
 package main
 
 import (
@@ -19,22 +18,36 @@ type Client struct {
 	isAdmin  bool
 }
 
-// NEW: Server struct encapsulates server state and channels
 type Server struct {
-	clients   map[string]*Client // Track connected clients
-	mu        sync.RWMutex       // Thread-safe access to clients
-	messages  chan string        // Channel for broadcasting
-	startTime time.Time          // Server uptime tracking
-	shutdown  chan struct{}      // Graceful shutdown channel
+	clients   map[string]*Client
+	mu        sync.RWMutex
+	messages  chan string
+	startTime time.Time
+	shutdown  chan struct{}
 }
 
 func newServer() *Server {
 	return &Server{
 		clients:   make(map[string]*Client),
-		messages:  make(chan string, 100), // Buffered message channel
+		messages:  make(chan string, 100),
 		startTime: time.Now(),
 		shutdown:  make(chan struct{}),
 	}
+}
+
+func (s *Server) formatMessage(client *Client, msg string) string {
+	timestamp := time.Now().Format("15:04")
+	username := client.name
+	if client.isAdmin {
+		username = "👑 " + username
+	}
+
+	return fmt.Sprintf(
+		"\033[90m%s\033[0m \033[36m%-15s\033[0m │ %s",
+		timestamp,
+		username,
+		msg,
+	)
 }
 
 func (s *Server) start(port string) {
@@ -51,16 +64,13 @@ func (s *Server) start(port string) {
 
 	log.Printf("Server started on %s", port)
 
-	// NEW: Concurrent message broadcaster
 	go s.broadcastMessages(conn)
-	// NEW: Periodic client cleanup
 	go s.cleanupClients()
 
 	buf := make([]byte, 1024)
 	for {
 		select {
 		case <-s.shutdown:
-			// Handle graceful shutdown
 			log.Println("Shutting down server...")
 			s.mu.RLock()
 			for _, client := range s.clients {
@@ -69,17 +79,15 @@ func (s *Server) start(port string) {
 			s.mu.RUnlock()
 			return
 		default:
-			// Set read timeout to prevent blocking indefinitely
 			conn.SetReadDeadline(time.Now().Add(1 * time.Minute))
 			n, clientAddr, err := conn.ReadFromUDP(buf)
 			if err != nil {
 				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-					continue // Timeout is normal, just continue
+					continue
 				}
 				log.Printf("Read error: %v", err)
 				continue
 			}
-			// Handle each message in its own goroutine
 			go s.handleMessage(conn, clientAddr, string(buf[:n]))
 		}
 	}
@@ -93,10 +101,8 @@ func (s *Server) handleMessage(conn *net.UDPConn, addr *net.UDPAddr, msg string)
 	client, exists := s.clients[clientKey]
 
 	if !exists {
-		// Registration handling
 		if strings.HasPrefix(msg, "REGISTER:") {
 			name := strings.TrimPrefix(msg, "REGISTER:")
-			// Check for duplicate usernames
 			for _, c := range s.clients {
 				if c.name == name {
 					conn.WriteToUDP([]byte("\033[31mUsername already taken. Please choose another.\033[0m\n"), addr)
@@ -113,13 +119,10 @@ func (s *Server) handleMessage(conn *net.UDPConn, addr *net.UDPAddr, msg string)
 			}
 			s.clients[clientKey] = newClient
 
-			// Color-coded join notification
-			welcome := fmt.Sprintf("\033[32m[%s] %s joined the chat\033[0m",
-				time.Now().Format("3:04 PM"), name)
-			s.messages <- welcome
+			welcome := s.formatMessage(newClient, "joined the chat")
+			s.messages <- "\033[32m" + welcome + "\033[0m"
 
 			if isAdmin {
-				// Special admin welcome message
 				adminMsg := "\n\033[33mADMIN MENU:\n" +
 					"1. /users - List all users\n" +
 					"2. /kick <username> - Kick a user\n" +
@@ -132,10 +135,8 @@ func (s *Server) handleMessage(conn *net.UDPConn, addr *net.UDPAddr, msg string)
 		return
 	}
 
-	// Update last seen time for active clients
 	client.lastSeen = time.Now()
 
-	// Enhanced command handling with colors and more features
 	switch {
 	case msg == "/menu" && client.isAdmin:
 		adminMenu := "\n\033[33mADMIN MENU:\n" +
@@ -236,17 +237,15 @@ func (s *Server) handleMessage(conn *net.UDPConn, addr *net.UDPAddr, msg string)
 		if strings.HasPrefix(msg, "/") {
 			conn.WriteToUDP([]byte("\033[31mInvalid command. Type /help for available commands\033[0m\n"), addr)
 		} else {
-			fullMsg := fmt.Sprintf("\033[34m[%s] %s:\033[0m %s",
-				time.Now().Format("3:04 PM"), client.name, msg)
+			fullMsg := s.formatMessage(client, msg)
 			s.messages <- fullMsg
 		}
 	}
 }
 
 func (s *Server) broadcastMessages(conn *net.UDPConn) {
-	// Dedicated goroutine for broadcasting messages
 	for msg := range s.messages {
-		s.mu.RLock() // Read lock for thread-safe access
+		s.mu.RLock()
 		for _, client := range s.clients {
 			_, err := conn.WriteToUDP([]byte(msg+"\n"), client.addr)
 			if err != nil {
@@ -258,7 +257,6 @@ func (s *Server) broadcastMessages(conn *net.UDPConn) {
 }
 
 func (s *Server) cleanupClients() {
-	// Periodic cleanup of inactive clients
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
@@ -271,7 +269,6 @@ func (s *Server) cleanupClients() {
 			now := time.Now()
 			timedOutUsers := make([]string, 0)
 
-			// Find inactive clients (skip admins)
 			for key, client := range s.clients {
 				if client.isAdmin {
 					continue
@@ -282,7 +279,6 @@ func (s *Server) cleanupClients() {
 				}
 			}
 
-			// Remove inactive clients
 			for _, key := range timedOutUsers {
 				name := s.clients[key].name
 				delete(s.clients, key)
@@ -299,7 +295,6 @@ func (s *Server) cleanupClients() {
 func startServer() {
 	s := newServer()
 
-	// Shutdown on Enter key press
 	go func() {
 		fmt.Println("Press Enter to shutdown server...")
 		bufio.NewReader(os.Stdin).ReadString('\n')
