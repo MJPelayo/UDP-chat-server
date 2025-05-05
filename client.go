@@ -11,6 +11,91 @@ import (
 	"time"
 )
 
+func clearScreen() {
+	fmt.Print("\033[H\033[2J")
+}
+
+func showInteractiveHelp(isAdmin bool) string {
+	clearScreen()
+	fmt.Println("\033[1;36m┌──────────────────────────────────────┐")
+	fmt.Println("│           \033[1;35mGOCHAT HELP\033[1;36m           │")
+	fmt.Println("├──────────────────────────────────────┤")
+
+	options := []struct {
+		key, desc string
+	}{
+		{"1", "List online users"},
+		{"2", "Send private message"},
+		{"3", "Change username"},
+		{"4", "View server stats"},
+	}
+
+	for _, opt := range options {
+		fmt.Printf("│ \033[32m%s\033[0m - %-25s \033[36m│\n", opt.key, opt.desc)
+	}
+
+	if isAdmin {
+		fmt.Println("├──────────────────────────────────────┤")
+		adminOpts := []struct {
+			key, desc string
+		}{
+			{"5", "Kick user"},
+			{"6", "Server broadcast"},
+			{"7", "View admin menu"},
+		}
+		for _, opt := range adminOpts {
+			fmt.Printf("│ \033[31m%s\033[0m - %-25s \033[36m│\n", opt.key, opt.desc)
+		}
+	}
+
+	fmt.Println("└──────────────────────────────────────┘\033[0m")
+	fmt.Print("Select option (q to quit): ")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		choice := scanner.Text()
+		switch choice {
+		case "1":
+			return "/users"
+		case "2":
+			fmt.Print("Enter username: ")
+			scanner.Scan()
+			user := scanner.Text()
+			fmt.Print("Enter message: ")
+			scanner.Scan()
+			msg := scanner.Text()
+			return fmt.Sprintf("WHISPER:%s:%s", user, msg)
+		case "3":
+			fmt.Print("Enter new username: ")
+			scanner.Scan()
+			return fmt.Sprintf("RENAME:%s", scanner.Text())
+		case "4":
+			return "/stats"
+		case "5":
+			if isAdmin {
+				fmt.Print("Enter username to kick: ")
+				scanner.Scan()
+				return fmt.Sprintf("KICK:%s", scanner.Text())
+			}
+		case "6":
+			if isAdmin {
+				fmt.Print("Enter broadcast message: ")
+				scanner.Scan()
+				return fmt.Sprintf("BROADCAST:%s", scanner.Text())
+			}
+		case "7":
+			if isAdmin {
+				return "/menu"
+			}
+		case "q":
+			return ""
+		default:
+			fmt.Print("Invalid choice, try again: ")
+		}
+	}
+	return ""
+}
+
 func showPrompt(username string) {
 	fmt.Printf("\033[35m[%s]\033[0m > ", username)
 }
@@ -64,14 +149,8 @@ func startClient(serverAddr, username string) {
 					close(shutdown)
 					return
 				}
-				msg := string(buf[:n])
-				if strings.Contains(msg, "is typing...") {
-					fmt.Print("\r\033[K")
-					fmt.Println(msg)
-				} else {
-					fmt.Print("\r\033[K")
-					fmt.Printf("%s\n", msg)
-				}
+				fmt.Print("\r\033[K")
+				fmt.Printf("%s\n", string(buf[:n]))
 				showPrompt(username)
 			}
 		}
@@ -92,18 +171,16 @@ func startClient(serverAddr, username string) {
 				}
 
 				text := scanner.Text()
-				if len(text) > 0 && !strings.HasPrefix(text, "/") {
-					conn.Write([]byte("TYPING:" + username))
-					time.Sleep(100 * time.Millisecond)
-				}
-
 				switch {
 				case text == "/quit":
 					conn.Write([]byte("QUIT:" + username))
 					close(shutdown)
 					return
 				case text == "/help":
-					printHelp(username == "admin")
+					cmd := showInteractiveHelp(username == "admin")
+					if cmd != "" {
+						conn.Write([]byte(cmd))
+					}
 				case text == "/menu" && username == "admin":
 					conn.Write([]byte("/menu"))
 				case strings.HasPrefix(text, "/rename "):
