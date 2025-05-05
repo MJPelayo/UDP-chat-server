@@ -35,21 +35,6 @@ func newServer() *Server {
 	}
 }
 
-func (s *Server) formatMessage(client *Client, msg string) string {
-	timestamp := time.Now().Format("15:04")
-	username := client.name
-	if client.isAdmin {
-		username = "👑 " + username
-	}
-
-	return fmt.Sprintf(
-		"\033[90m%s\033[0m \033[36m%-15s\033[0m │ %s",
-		timestamp,
-		username,
-		msg,
-	)
-}
-
 func (s *Server) start(port string) {
 	addr, err := net.ResolveUDPAddr("udp", port)
 	if err != nil {
@@ -97,6 +82,12 @@ func (s *Server) handleMessage(conn *net.UDPConn, addr *net.UDPAddr, msg string)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if strings.HasPrefix(msg, "TYPING:") {
+		name := strings.TrimPrefix(msg, "TYPING:")
+		s.messages <- fmt.Sprintf("\033[2m%s is typing...\033[0m", name)
+		return
+	}
+
 	clientKey := addr.String()
 	client, exists := s.clients[clientKey]
 
@@ -119,8 +110,9 @@ func (s *Server) handleMessage(conn *net.UDPConn, addr *net.UDPAddr, msg string)
 			}
 			s.clients[clientKey] = newClient
 
-			welcome := s.formatMessage(newClient, "joined the chat")
-			s.messages <- "\033[32m" + welcome + "\033[0m"
+			welcome := fmt.Sprintf("\033[32m[%s] %s joined the chat\033[0m",
+				time.Now().Format("3:04 PM"), name)
+			s.messages <- welcome
 
 			if isAdmin {
 				adminMsg := "\n\033[33mADMIN MENU:\n" +
@@ -237,7 +229,8 @@ func (s *Server) handleMessage(conn *net.UDPConn, addr *net.UDPAddr, msg string)
 		if strings.HasPrefix(msg, "/") {
 			conn.WriteToUDP([]byte("\033[31mInvalid command. Type /help for available commands\033[0m\n"), addr)
 		} else {
-			fullMsg := s.formatMessage(client, msg)
+			fullMsg := fmt.Sprintf("\033[34m[%s] %s:\033[0m %s",
+				time.Now().Format("3:04 PM"), client.name, msg)
 			s.messages <- fullMsg
 		}
 	}

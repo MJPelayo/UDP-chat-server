@@ -12,7 +12,7 @@ import (
 )
 
 func showPrompt(username string) {
-	fmt.Printf("\033[36m[%s]\033[0m » ", username)
+	fmt.Printf("\033[35m[%s]\033[0m > ", username)
 }
 
 func startClient(serverAddr, username string) {
@@ -64,8 +64,14 @@ func startClient(serverAddr, username string) {
 					close(shutdown)
 					return
 				}
-				fmt.Print("\r\033[K")
-				fmt.Printf("%s\n", string(buf[:n]))
+				msg := string(buf[:n])
+				if strings.Contains(msg, "is typing...") {
+					fmt.Print("\r\033[K")
+					fmt.Println(msg)
+				} else {
+					fmt.Print("\r\033[K")
+					fmt.Printf("%s\n", msg)
+				}
 				showPrompt(username)
 			}
 		}
@@ -86,6 +92,11 @@ func startClient(serverAddr, username string) {
 				}
 
 				text := scanner.Text()
+				if len(text) > 0 && !strings.HasPrefix(text, "/") {
+					conn.Write([]byte("TYPING:" + username))
+					time.Sleep(100 * time.Millisecond)
+				}
+
 				switch {
 				case text == "/quit":
 					conn.Write([]byte("QUIT:" + username))
