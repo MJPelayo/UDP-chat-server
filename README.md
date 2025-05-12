@@ -2,6 +2,8 @@
 
 # TCP -chat-server https://github.com/ScarletSalinas/CMPS2242SemesterProject
 
+# YouTube video link: https://www.youtube.com/watch?v=wSEWHL-QNBE
+
 # GoChat - A UDP/TCP Chat Application
 
 GoChat is a high-performance, command-line chat application built in Go that supports both UDP and TCP protocols. It features a robust server-client architecture with advanced functionality including private messaging, admin controls, and performance benchmarking.
